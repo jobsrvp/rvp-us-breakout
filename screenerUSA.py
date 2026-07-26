@@ -14,6 +14,9 @@ import io
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
+# Minimum Market Cap Filter ($1 Billion USD)
+MIN_MARKET_CAP = 1_000_000_000  # Adjust as needed (e.g., 500_000_000 for $500M)
+
 # Popular sample tickers listed directly on NASDAQ for test metrics
 MY_PORTFOLIO = [""]
 
@@ -217,20 +220,32 @@ def calc_rs(df):
 def process_stock(symbol, df, metadata_cache, rs_ratings):
     if df is None or len(df) < 52: return None
     
-    # METADATA
+    # METADATA & MARKET CAP
     if symbol in metadata_cache:
         sector = metadata_cache[symbol].get('sector', 'N/A')
         industry = metadata_cache[symbol].get('industry', 'N/A')
+        mcap = metadata_cache[symbol].get('marketCap', 0)
     else:
         try:
             print(f"Fetching info for {symbol}...")
             t = yf.Ticker(symbol)
-            sector = t.info.get('sector', 'N/A')
-            industry = t.info.get('industry', 'N/A')
-            metadata_cache[symbol] = {'sector': sector, 'industry': industry}
+            info = t.info
+            sector = info.get('sector', 'N/A')
+            industry = info.get('industry', 'N/A')
+            mcap = info.get('marketCap', 0) or 0
+            
+            metadata_cache[symbol] = {
+                'sector': sector, 
+                'industry': industry, 
+                'marketCap': mcap
+            }
             time.sleep(0.05) 
         except:
-            sector, industry = "N/A", "N/A"
+            sector, industry, mcap = "N/A", "N/A", 0
+
+    # MARKET CAP FILTER
+    if mcap < MIN_MARKET_CAP:
+        return None
 
     df = df[['Open','High','Low','Close','Volume']].copy()
     df['SMA40'] = df['Close'].rolling(40).mean()
