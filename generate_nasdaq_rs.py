@@ -180,16 +180,16 @@ def generate_daily_rs():
             msg += f"{star} `{rank:2d}`. `{symbol}` — *{rating}*\n"
             
             if rank % 20 == 0 and rank < 100:
-                send_telegram_msg(msg)
+                #send_telegram_msg(msg)
                 msg = f"🏆 *NASDAQ TOP 100 RS RATING* (continued...)\n\n"
         
-        send_telegram_msg(msg)
+        #send_telegram_msg(msg)
         
         # Top 10 summary
-        top10_msg = "🔝 *TOP 10 TODAY*\n"
-        for i, row in top100.head(10).iterrows():
-            top10_msg += f"`{row['Symbol']}`: *{int(row['RS_Rating'])}*\n"
-        send_telegram_msg(top10_msg)
+        top20_msg = "🔝 *TOP 10 TODAY*\n"
+        for i, row in top100.head(20).iterrows():
+            top20_msg += f"`{row['Symbol']}`: *{int(row['RS_Rating'])}*\n"
+        send_telegram_msg(top20_msg)
     
     print(f"\n🎉 Daily Update Completed!")
     print(f"🕒 Finished at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
