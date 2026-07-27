@@ -15,7 +15,7 @@ TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
 # Minimum Market Cap Filter ($1 Billion USD)
-MIN_MARKET_CAP = 1_000_000_000  # Adjust as needed (e.g., 500_000_000 for $500M)
+MIN_MARKET_CAP = 2_500_000_000  # Adjust as needed (e.g., 500_000_000 for $500M)
 
 # Popular sample tickers listed directly on NASDAQ for test metrics
 MY_PORTFOLIO = [""]
@@ -341,23 +341,71 @@ def run():
     print(f"✅ Loaded RS Ratings for {len(rs_ratings)} stocks from cache.")
     
     initial_cache_size = len(metadata_cache)
-    
+
+    # ─── PRE-FILTER BY MARKET CAP (NEW) ──────────────────────────────
+    print("🔍 Pre-filtering by market cap...")
+    symbols_needing_mcap = [
+        s for s in symbols
+        if s not in metadata_cache or not metadata_cache[s].get('marketCap', 0)
+    ]
+
+    if symbols_needing_mcap:
+        print(f"  Fetching market-cap info for {len(symbols_needing_mcap)} symbols...")
+        for i, symbol in enumerate(symbols_needing_mcap, 1):
+            try:
+                t = yf.Ticker(symbol)
+                info = t.info
+                sector = info.get('sector', 'N/A')
+                industry = info.get('industry', 'N/A')
+                mcap = info.get('marketCap', 0) or 0
+
+                metadata_cache[symbol] = {
+                    'sector': sector,
+                    'industry': industry,
+                    'marketCap': mcap
+                }
+                if i % 50 == 0:
+                    print(f"    … {i}/{len(symbols_needing_mcap)}")
+                time.sleep(0.08)          # polite rate-limit
+            except Exception as e:
+                # keep going – treat as 0 market-cap
+                metadata_cache[symbol] = {
+                    'sector': 'N/A', 'industry': 'N/A', 'marketCap': 0
+                }
+                print(f"    ⚠️ {symbol}: {e}")
+
+        # persist the newly fetched metadata
+        save_metadata(metadata_cache)
+        print(f"✅ Metadata cache updated ({len(metadata_cache)} entries)")
+
+    # Build the final list that actually passes the filter
+    filtered_symbols = [
+        s for s in symbols
+        if metadata_cache.get(s, {}).get('marketCap', 0) >= MIN_MARKET_CAP
+    ]
+    print(f"✅ After market-cap filter (≥ ${MIN_MARKET_CAP/1e6:.0f}M): "
+          f"{len(filtered_symbols)} / {len(symbols)} symbols remain")
+
+    # ─── DOWNLOAD ONLY THE FILTERED LIST + PORTFOLIO ─────────────────
     data_dict = {}
     batch_size = 50
-    all_to_download = list(set(symbols + MY_PORTFOLIO))
+    all_to_download = list(set(filtered_symbols + MY_PORTFOLIO))
     
-    print("Downloading historical data in batches...")
+    print(f"Downloading historical data for {len(all_to_download)} symbols "
+          f"(batches of {batch_size})...")
     for i in range(0, len(all_to_download), batch_size):
         batch = all_to_download[i:i+batch_size]
         try:
             print(f"  Batch {i//batch_size + 1} | {len(batch)} symbols")
-            batch_data = yf.download(batch, period="2y", interval="1wk", 
+            batch_data = yf.download(batch, period="2y", interval="1wk",
                                      group_by='ticker', progress=False)
             
             for sym in batch:
                 try:
-                    data_dict[sym] = batch_data[sym] if isinstance(batch_data.columns, pd.MultiIndex) else batch_data
-                except:
+                    data_dict[sym] = (batch_data[sym]
+                                      if isinstance(batch_data.columns, pd.MultiIndex)
+                                      else batch_data)
+                except Exception:
                     pass
         except Exception as e:
             print(f"Batch download error: {e}")
