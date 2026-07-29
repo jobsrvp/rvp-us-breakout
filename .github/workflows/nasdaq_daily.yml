@@ -2,40 +2,70 @@ name: Daily NASDAQ Breadth & RS
 
 on:
   schedule:
-    - cron: '0 12 * * *'
-  workflow_dispatch:
+    - cron: '0 12 * * *'   # 12:00 UTC every day
+  workflow_dispatch:        # Allow manual runs
+
+permissions:
+  contents: write           # Needed so the bot can push commits
 
 jobs:
   run-nasdaq-pipeline:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # Fetch full history so we can commit cleanly
+          fetch-depth: 0
 
-    - name: Install TA-Lib C Library
-      uses: TA-Lib/setup-ta-lib@v1
+      - name: Install TA-Lib C Library
+        uses: TA-Lib/setup-ta-lib@v1
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.10'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'          # Speeds up dependency installation
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install yfinance pandas numpy matplotlib requests plotly TA-Lib
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install yfinance pandas numpy matplotlib requests plotly TA-Lib
 
-    - name: Run NASDAQ Data Pipeline
-      env:
-        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-      run: |
-        echo "Generating Relative Strength data..."
-        python generate_nasdaq_rs.py
-        
-        echo "Calculating Market Breadth..."
-        python market_breadth_nasdaq.py
-        
-        echo "Plotting and broadcasting charts..."
-        python breadth_plotter_nasdaq.py
+      - name: Run NASDAQ Data Pipeline
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          echo "Generating Relative Strength data..."
+          python generate_nasdaq_rs.py
+
+          echo "Calculating Market Breadth..."
+          python market_breadth_nasdaq.py
+
+          echo "Plotting and broadcasting charts..."
+          python breadth_plotter_nasdaq.py
+
+      - name: Commit and push updated files
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+
+          # Add only the files you actually want to keep in the repo
+          # Adjust the paths below to match your project structure
+          git add \
+            *.json \
+            **/*.json \
+            charts/ \
+            plots/ \
+            data/ \
+            || true
+
+          # Only commit if there are real changes
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: update NASDAQ breadth & RS cache $(date -u +'%Y-%m-%d %H:%M UTC')"
+            git push
+          fi
