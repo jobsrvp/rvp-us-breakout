@@ -1,0 +1,106 @@
+name: Daily NASDAQ RS & Screener Pipeline
+
+permissions:
+  contents: write
+
+on:
+  schedule:
+    # Runs daily at 12:00 UTC (05:30 PM IST / 08:00 AM EST)
+    - cron: '0 12 * * *'
+  workflow_dispatch:          # Allows manual trigger from Actions tab
+
+jobs:
+  run-us-breakout-pipeline:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0      # Full history for clean commits
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'        # Leverages your requirements.txt for fast caching
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; else pip install yfinance pandas numpy matplotlib requests plotly TA-Lib; fi
+
+      # STEP 1: Generate NASDAQ Relative Strength Ratings
+      - name: Run Relative Strength Generator
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          echo "🚀 Step 1: Generating Relative Strength Data..."
+          python generate_nasdaq_rs.py
+
+      - name: Cooldown Pause
+        run: sleep 15         # Prevents Yahoo Finance rate-limiting between script calls
+
+      # STEP 2: Calculate Market Breadth
+      - name: Run Market Breadth Engine
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          echo "📊 Step 2: Calculating NASDAQ Market Breadth..."
+          python market_breadth_nasdaq.py
+
+      - name: Cooldown Pause
+        run: sleep 15
+
+      # STEP 3: Execute US Stock Breakout Screener
+      - name: Run USA Stock Screener
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          echo "🔍 Step 3: Executing USA Screener..."
+          python screenerUSA.py
+
+      - name: Cooldown Pause
+        run: sleep 10
+
+      # STEP 4: Plot & Broadcast Charts
+      - name: Plot Dashboard & Send Telegram Alert
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          echo "📈 Step 4: Generating Charts & Broadcasting..."
+          if [ -f breadth_plotter_nasdaq.py ]; then python breadth_plotter_nasdaq.py; elif [ -f plotter.py ]; then python plotter.py; fi
+
+      # STEP 5: Safely Commit All Updated Files Back to Repo
+      - name: Commit and Push Updated Cache & Artifacts
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Safely stage JSON databases, HTML dashboards, and PNG charts from your repo layout
+          git add \
+            rs_rating_cache.json \
+            rs_rating_history.json \
+            breadth_history.json \
+            metadata_cache.json \
+            nasdaq_tickers_cache.csv \
+            nasdaq_market_dashboard.html \
+            market_dashboard.png \
+            charts/ \
+            plots/ \
+            data/ || true
+
+          if git diff --staged --quiet; then
+            echo "No changes detected across JSON caches or plots."
+          else
+            git commit -m "🔄 Auto-update NASDAQ RS, Breadth & Market Dashboard [skip ci]"
+            git push
+            echo "✅ Caches and dashboard updated successfully!"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
