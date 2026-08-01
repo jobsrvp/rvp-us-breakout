@@ -30,7 +30,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install yfinance pandas numpy matplotlib requests plotly TA-Lib
+          pip install yfinance pandas numpy matplotlib requests plotly 
 
       - name: Run NASDAQ Data Pipeline
         env:
