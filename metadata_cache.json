@@ -10633,5 +10633,10 @@
         "sector": "Industrials",
         "industry": "Consulting Services",
         "marketCap": 59255456
+    },
+    "nan": {
+        "sector": "Financial Services",
+        "industry": "Asset Management",
+        "marketCap": 369558464
     }
 }
