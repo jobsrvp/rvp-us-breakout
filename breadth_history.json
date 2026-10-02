@@ -46863,5 +46863,12 @@
         "breadth_pct": 48.42,
         "near_high_pct": 16.44,
         "near_low_pct": 14.86
+    },
+    {
+        "date": "2026-10-02",
+        "time": "19:44:42",
+        "breadth_pct": 51.35,
+        "near_high_pct": 19.82,
+        "near_low_pct": 15.09
     }
 ]
